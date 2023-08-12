@@ -1,0 +1,116 @@
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: socket
+spec:
+  selector:
+    matchLabels:
+      app: socket
+      tier: backend
+      track: stable
+  serviceName: "socket"
+  replicas: 15
+  template:
+    metadata:
+      labels:
+        app: socket
+        tier: backend
+        track: stable
+    spec:
+      containers:
+      - name: websocket
+        image: gcr.io/hsl-gcp-prd-app-buzzwk-prj-spk/flexydial-websocket:dev
+        command: ["/bin/sh"]
+        #args: ["-c", "DEBUG=engine,socket.io* node callcenter.js"]
+        args: ["-c","node callcenter.js"]
+        imagePullPolicy: Always
+        resources:
+          requests:
+            cpu: "500m"
+            memory: "1024Mi"
+          limits:
+            cpu: "1000m"
+            memory: "2048Mi"
+        ports:
+        - name: socket
+          containerPort: 3233
+        - name: sip
+          containerPort: 8084
+        - name: out
+          containerPort: 8085
+        - name: agent
+          containerPort: 8086
+        - name: inb
+          containerPort: 8087
+        env:
+        - name: HOST_URL
+          value: nginx
+        - name: REDIS_URL
+          value: 10.34.71.6
+        - name: REDIS_PORT
+          value: "6379"
+        volumeMounts:
+        - name: socket-volume
+          mountPath: /home/app/fs-dialplan/callcenter.js
+          subPath: callcenter.js
+          readOnly: true
+      volumes:
+      - name: socket-volume
+        configMap:
+           name: socket-config
+      imagePullSecrets:
+        - name: regcred
+
+---
+ apiVersion: v1
+ kind: Service
+ metadata:
+   name: socket
+ spec:
+   selector:
+     app: socket
+     tier: backend
+     track: stable
+   ports:
+    - name: websocket
+      protocol: TCP
+      port: 3233
+      targetPort: 3233
+   sessionAffinity: ClientIP
+   sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 43200
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: socketsvc
+  labels:
+    app: socket
+    tier: backend
+    track: stable
+spec:
+  type: NodePort
+  ports:
+  - name: sip
+    protocol: TCP
+    port: 8084
+    nodePort: 32084
+  - name: out
+    protocol: TCP
+    port: 8085
+  - name: agent
+    protocol: TCP
+    port: 8086
+  - name: inb
+    protocol: TCP
+    port: 8087
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 43200
+  selector:
+    app: socket
+    tier: backend
+    track: stable

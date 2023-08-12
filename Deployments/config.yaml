@@ -1,0 +1,197 @@
+apiVersion: v1
+data:
+  callcenter.js: "(function () {\nutil = require('util');\nesl = require('esl');\nvar
+    fs = require('fs');\nvar https = require('https');\nvar inbound = require(\"./inboundcall.js\");\nvar
+    transfer_call = require(\"./transfercall_route.js\");\nvar MEDIA_ROOT = '/var/lib/flexydial/media'\n//
+    Socket io initialization starts\nconst options =\n\t\t\t\t{\n\t\t\t\t\t key: fs.readFileSync('flexydial.key'),\n\t\t\t\t\t
+    cert: fs.readFileSync('flexydial.crt')\n\t\t\t\t};\nvar socket_server = https.createServer(options);\nvar
+    io = require('socket.io')(socket_server);\nsocket_server.listen(3233,'0.0.0.0')\n\nvar
+    redis = require('redis');\nleadlist_details_data = redis.createClient({host: process.env.REDIS_URL,port:
+    process.env.REDIS_PORT});\nleadlist_details_data.subscribe('lead-details');\n\n\nio.on('connection',
+    function(socket) {\n\tsocket.on('new',function(data){\n\t\tconsole.log(data)\n
+    \t});\n\tleadlist_details_data.on('message',function(channel, message){\n\t\t\tsocket.send(message);\n\t\t});\n
+    \tsocket.on('transfer',function(data){\n \t\tif (data['transfer_type'] == 'external'){\n
+    \t\t\tconsole.log('external',data)\n \t\t}else{\n\t\t\ttransfer_call.transfercall_route(data,function(err,data){\n\t\t\t\tio.emit(\"transfer_agents\",data)\n\t\t\t})\n
+    \t\t}\n\t});\n\n\tsocket.on('tr_internal_agent_answer',function(data){\n\t\tio.emit(\"tr_internal_agent_answer_res\",data)\n\t});\n\n\tsocket.on('transfer_to_agent_rejected',function(data){\n\t\ttransfer_call.transfercall_del_alert(data,function(err,data){\n\t\t\tio.emit(\"transfer_to_agent_rejected_res\",data)\n\t\t})\n\t});\n\n\tsocket.on('tr_from_agent_hangup',function(data){\n\t\ttransfer_call.transfercall_del_alert(data,function(err,data){\n\t\t\tio.emit(\"tr_from_agent_hangup_res\",data)\n\t\t})\n\t});\n\tsocket.on(\"dial_number_transfer_to_agent\",function(data){\n\t\tio.emit(\"dial_number_transfer_to_agent_res\",data)\n\t});\n\tsocket.on('emergency_logout',function(data){\n\t\tio.emit(\"do_emergency_logout\",data)\n\t});\n\tsocket.on('emergency_logout_status',function(data){\n\t\tio.emit(\"emergency_logout_status_admin\",data)\n\t});\n\tsocket.on('emergency_all_logout_status',function(data){\n\t\tio.emit(\"emergency_all_logout_status_admin\",data)\n\t});\n\tsocket.on('emergency_logout_all_users',function(data){\n\t\tio.emit(\"do_emergency_logout_all_users\",data)\n\t});\n\tsocket.on('broadcast_message_to_users',function(data){\n\t\tio.emit(\"do_broadcast_message\",data)\n\t});\n\tsocket.on('check_progressive_preview_data',function(data){\n\t\tio.emit(\"do_progressive_preview_newlead\",data)\n\t});\n});\n\nserver
+    = esl.createCallServer();\nserver.on('CONNECT', function (req) {\n\t\tif ('variable_wfh'
+    in req.body & req.body['variable_wfh'] == 'true'){\n\t\t\tif (req.body['variable_usertype']
+    != 'wfh-agent-req-dial'){\n\t\t\t\tdial_method = req.body['variable_outbound_dial_method']\n\t\t\t\tif
+    (dial_method == 'Predictive' | dial_method == 'Progressive' | dial_method == 'Preview'){\n\t\t\t\t\treq.execute(\"transfer\",\"12345
+    XML default2\")\n\t\t\t\t}\n\t\t\t}\n\t\t}else{\n\t\t\tserver_ip = req.body['variable_sip_from_host']\n\t\t\tif
+    (('variable_sip_from_host' in req.body)==false){\n\t\t\t\tserver_ip = req.body['FreeSWITCH-IPv4']\n\t\t\t}\n\t\t\tio.emit('sip_session_details',{'Unique-ID':req.body['Unique-ID'],\n\t\t\t\t'Caller-Caller-ID-Number':req.body['Channel-Orig-Caller-ID-Number'],\n\t\t\t\t'variable_sip_from_host':
+    server_ip\n\t\t\t});\n\t\t\treq.execute(\"transfer\",\"00019916 XML default\")\n\t\t}\n\t\treq.on('DTMF',
+    function (req) {\n\t\t\tdtmf = req.body['DTMF-Digit']\n\t\t\tif ('variable_wfh'
+    in req.body & req.body['variable_wfh'] == 'true') {\n\t            if ('Other-Leg-Unique-ID'
+    in req.body){\n\t            \tuuid = req.body['Other-Leg-Unique-ID']\n\t            \tsession_uuid
+    = req.body['Unique-ID']\n\t\t\t\t\tif(dtmf == '1'){\n\t            \t\taction
+    = 'customer_name'\n\t\t\t\t\t\tinbound.wfh_customer_details_route(req,uuid,session_uuid,action,function(err,data){\n\t\t\t\t\t\t\treq.execute_uuid(session_uuid,
+    'playback', `${MEDIA_ROOT}/${session_uuid}.mp3`);\n\t\t\t\t\t\t\t// req.execute_uuid(session_uuid,
+    'playback', `${MEDIA_ROOT}/${session_uuid}.wav`);\n\t\t\t\t\t\t})\n\t    \t\t\t\t//inbound.wfh_client_hangup(uuid,
+    action='customer_name', function(err,data){\n\t\t\t\t\t\t// })\n\t                    //
+    req.execute_uuid(uuid, 'set', 'tts_engine=flite');\n\t                    // req.execute_uuid(uuid,
+    'set', 'tts_voice=slt');\n\t                    // req.execute_uuid(uuid, 'speak',
+    'hello dinesh');\n\t            \t}else if(dtmf == '2'){\n\t            \t\taction
+    = 'customer_number'\n\t\t\t\t\t\tinbound.wfh_customer_details_route(req,uuid,session_uuid,action,function(err,data){\n\t\t\t\t\t\t\treq.execute_uuid(session_uuid,
+    'playback', `${MEDIA_ROOT}/${session_uuid}.mp3`);\n\t\t\t\t\t\t\t// req.execute_uuid(session_uuid,
+    'playback', `${MEDIA_ROOT}/${session_uuid}.wav`);\n\t\t\t\t\t\t})\n\t            \t}else
+    if(dtmf == '#'){\n\t            \t\tinbound.wfh_client_hangup(uuid, action='unmute',
+    function(err,data){\n\t\t\t\t\t\t})\n\t            \t}else if(dtmf == '*'){\n\t
+    \           \t\tinbound.wfh_client_hangup(uuid, action='mute', function(err,data){\n\t\t\t\t\t\t})\n\t
+    \           \t}else if(dtmf == '0'){\n\t            \t\treq.execute_uuid(uuid,
+    'hangup');\n\t\t\t\t\t\t// inbound.wfh_client_hangup(uuid, action='hangup', function(err,data){\n\t\t\t\t\t\t//
+    })\n\t            \t}\n\t            }\n           \t}\n\t\t\treturn util.log('DTMF',dtmf,\"a-leg
+    : \",req.body['Unique-ID'],\" b-leg : \",req.body['Other-Leg-Unique-ID']);\n\t\t})\n\t\treq.on('CHANNEL_ANSWER',function
+    (req){\n\t\t\tif ('variable_wfh' in req.body & req.body['variable_wfh'] == 'true'){\n\t\t\t\tif
+    (req.body['variable_usertype'] == 'wfh-agent-req-dial'){\n\t\t\t\t\treq.execute(\"transfer\",\"12345
+    XML default2\")\n\t\t\t\t}\n\t\t\t}\n\t\t})\n\t\treq.on('CHANNEL_HANGUP', function
+    (req) {\n\t\t\tif (!('variable_wfh' in req.body)){\n\t\t\t\tio.emit(\"sip_hangup_client\",req.body['variable_cc_agent'])\n\t\t\t}\n\t\t\treturn
+    util.log('CHANNEL_HANGUP',req.body['variable_cc_agent']);\n\t });\n\n});\nserver.listen(8084,
+    '0.0.0.0');\n\noutbound_server = esl.createCallServer();\noutbound_server.on('CONNECT',
+    function (req) {\n    //console.log(req.body)\n\tvar campaign_name = req.body['variable_campaign_name']\n\tvar
+    usertype =req.body['variable_usertype']\n\treq.execute('set', 'campaign_name=${campaign_name}');\n\treq.execute('set',
+    'usertype=${usertype}');\n\treq.execute('set', 'cc_export_vars=campaign_name,usertype');\n\treq.execute('set','disposition=NC')\n\tvar
+    date_time = '${strftime(%d-%m-%Y-%H-%M)}'\n\tvar destination_number = req.body['Channel-Caller-ID-Number'].slice(-10)\n\tvar
+    cc_agent = req.body['variable_cc_agent']\n\tvar dialed_uuid = req.body['Unique-ID']\n\tsetTimeout(()=>{\n\t\t\tif
+    (!('wfh_call' in req.body)){\n\t\t\treq.execute(\"conference\",req.body['variable_agent-Unique-ID']+\"@sla\")\n\t\t}\n\t\treq.execute('set',
+    `cc_customer=${destination_number}`)\n\t\treq.execute('set', 'RECORD_TITLE=Recording
+    ${dialed_number} ${caller_id_number} ${strftime(%Y-%m-%d %H:%M)');\n\t\treq.execute('set',
+    'RECORD_COPYRIGHT=(c) Buzzworks, Inc.');\n\t\treq.execute('set', 'RECORD_SOFTWARE=FreeSWITCH');\n\t\treq.execute('set',
+    'RECORD_ARTIST=Buzzworks');\n\t\treq.execute('set', 'RECORD_COMMENT=Buzz that
+    works');\n\t\treq.execute('set', 'RECORD_DATE=${strftime(%Y-%m-%d %H:%M)}');\n\t\treq.execute('set',
+    'RECORD_STEREO=true');\n\t\treq.execute(\"record_session\",`/var/spool/freeswitch/default/${date_time}_${destination_number}_${dialed_uuid}.mp3`)\n\t},4000)\n\tconsole.log(\"outbound
+    connected\");\n\treq.on('CHANNEL_ANSWER', function (req) {\n\t\tconsole.log(req.body['Event-Date-Timestamp'])\n\t\t//
+    req.execute(\"bridge\",\"user/\"+cc_agent)\n\t\tif('variable_fake_ring' in req.body
+    && req.body['variable_fake_ring'] == 'true'){\n\t\t\tvar date_time = '${strftime(%d-%m-%Y-%H-%M)}'\n\t\t\tvar
+    destination_number = req.body['variable_cc_customer'].slice(-10)\n\t\t\tvar dialed_uuid
+    = req.body['Unique-ID']\n\t\t\treq.execute(\"conference\",req.body['variable_agent-Unique-ID']+\"@sla\")\n\t\t\treq.execute('set',
+    'RECORD_TITLE=Recording ${dialed_number} ${caller_id_number} ${strftime(%Y-%m-%d
+    %H:%M)');\n\t\t\treq.execute('set', 'RECORD_COPYRIGHT=(c) Buzzworks, Inc.');\n\t\t\treq.execute('set',
+    'RECORD_SOFTWARE=FreeSWITCH');\n\t\t\treq.execute('set', 'RECORD_ARTIST=Buzzworks');\n\t\t\treq.execute('set',
+    'RECORD_COMMENT=Buzz that works');\n\t\t\treq.execute('set', 'RECORD_DATE=${strftime(%Y-%m-%d
+    %H:%M)}');\n\t\t\treq.execute('set', 'RECORD_STEREO=true');\n\t\t\treq.execute(\"record_session\",`/var/spool/freeswitch/default/${date_time}_${destination_number}_${dialed_uuid}.mp3`)\n\t\t}\n\t\treq.execute('set','disposition=Connected')\n\t\tif(req.body['variable_usertype']
+    == 'transfer_client' || req.body['variable_usertype'] == 'conference_client'){\n\t\t\tio.emit(\"OUTBOUND_TRANSFER_CHANNEL_ANSWER\",req.body['variable_cc_agent'])\n\t\t}else{\n\t\t\tio.emit(\"OUTBOUND_CHANNEL_ANSWER\",{'sip_extension':req.body['variable_cc_agent'],'call_timestamp':req.body['Event-Date-Timestamp']})\n\t\t}\n\t\treturn
+    util.log('OUTBOUND_CHANNEL_ANSWER',req.body['variable_cc_agent']);\n\t})\n\treq.on('CHANNEL_BRIDGE',
+    function (req) {\n\t\treturn util.log('OUTBOUND_CHANNEL_BRIDGE');\n\t})\n\treq.on('CALL_UPDATE',
+    function (req) {\n\t\treturn util.log('OUTBOUND_CALL_UPDATE');\n\t})\n\treq.on('CHANNEL_HANGUP',
+    function (req) {\n\t\tif( req.body['variable_transfer_status']=='true'){\n\t\t\tio.emit(\"OUTBOUND_CHANNEL_HANGUP\",{\"sip_extension\":req.body['Other-Leg-Orig-Caller-ID-Number'],\"dialed_number\":destination_number})\n\t\t\treturn
+    util.log('OUTBOUND_TRANSFERED_CHANNEL_HANGUP',req.body['Other-Leg-Orig-Caller-ID-Number']);\n\t\t}else{\n\t\t\tif(req.body['variable_usertype']
+    == 'transfer_client'){\n\t\t\t\tio.emit(\"OUTBOUND_TRANSFER_CHANNEL_HANGUP\",req.body['variable_cc_agent'])\n\t\t\t\treturn
+    util.log('OUTBOUND_TRANSFER_CHANNEL_HANGUP',req.body['variable_cc_agent']);\n\t\t\t}else
+    if(req.body['variable_usertype'] == 'conference_client') {\n\t\t\t\tio.emit(\"OUTBOUND_CONFERENCE_CHANNEL_HANGUP\",{\"sip_extension\":req.body['variable_cc_agent'],\"conference_num_uuid\":req.body['Unique-ID'],\n\t\t\t\t\t\"dialed_number\":req.body['Caller-Caller-ID-Number']})\n\t\t\t\treturn
+    util.log('OUTBOUND_CONFERENCE_CHANNEL_HANGUP',req.body['variable_cc_agent']);\n\t\t\t}else{\n\t\t\t\tio.emit(\"OUTBOUND_CHANNEL_HANGUP\",
+    {\"sip_extension\":req.body['variable_cc_agent'],\"dialed_number\":destination_number})\n\t\t\t\treturn
+    util.log('OUTBOUND_CHANNEL_HANGUP',req.body['variable_cc_agent']);\n\t\t\t}\n\t\t}\n\t})\n\treq.on('CHANNEL_HANGUP_COMPLETE',
+    function (req) {\n\t\treturn util.log('OUTBOUND_CHANNEL_HANGUP_COMPLETE');\n\t})\n});\noutbound_server.listen(8085,
+    '0.0.0.0');\ninbound_server = esl.createCallServer();\ninbound_server.on('CONNECT',
+    function (req) {\n\t\tvar channel_data = req.body;\n\t\tdestination_number = req.body['Caller-Caller-ID-Number'].slice(-10)\n\t\tcaller_id
+    = req.body['Caller-Destination-Number']\n\t\tdialed_uuid = req.body['Unique-ID']\n\t\tserver
+    = req.body['FreeSWITCH-IPv4']\n\t\tdate_time = '${strftime(%d-%m-%Y-%H-%M)}'\n\t\tvar
+    callback = \"\"\n\t\taudio_played = false\n\t\tinbound.inboundcall_route(req,caller_id,dialed_uuid,server,destination_number,function(err,data){\n\t\t\tif
+    (data['dial_method']['ibc_popup']==true){\n\t\t\t\treq.execute('set', 'call_mode=inbound');\n\t\t\t\tdata['destination_number']=
+    destination_number\n\t\t\t\tdata['dialed_uuid']= dialed_uuid\n\t\t\t\tintiate_time
+    = req.body['Channel-Channel-Created-Time']\n\t\t\t\tif (data['non_office_hrs']==false){\n\t\t\t\t\t//
+    req.execute(\"record_session\",`/var/spool/freeswitch/default/${date_time}_${destination_number}_${dialed_uuid}.mp3`)\n\t\t\t\t\tio.emit(\"inbound_agents\",data)\n\t\t\t\t\treq.execute('set','no_agent_audio=false')\n\t\t\t\t\tif
+    (data['no_agent_audio'] & data['audio_moh_sound'] != null & audio_played == false){\n\t\t\t\t\t\treq.execute('set','no_agent_audio=true')\n\t\t\t\t\t\treq.execute(\"answer\")\n\t\t\t\t\t\taudio_played
+    = true\n\t\t\t\t\t\treq.execute('endless_playback', `${MEDIA_ROOT}/${data['audio_moh_sound']}`)\n\t\t\t\t\t}\n\t\t\t\t\tinbound.availale_agents(req,caller_id,dialed_uuid,server,destination_number,intiate_time,function(err,data){\n\t\t\t\t\t\tif
+    (data['cust_status'] == 'true'){\n\t\t\t\t\t\t\tio.emit(\"inbound_agents\",data)\n\t\t\t\t\t\t}else{\n\t\t\t\t\t\t\tif(data['cust_status']
+    == 'timeout'){\n\t\t\t\t\t\t\t\treq.execute('hangup');\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\t\t\t\t\t})\n\t\t\t\t}else{\n\t\t\t\t\treq.execute('hangup');\n\t\t\t\t}\n\t\t\t}else
+    if(data['dial_method']['inbound']== true & data['dial_method']['ibc_popup']==false){\n\t\t\t\tif
+    (data['queue_call']==true){\n\t\t\t\t\tcall_mode = 'inbound'\n\t\t\t\t\tcallback
+    = data['callback']\n\t\t\t\t\tif(data['dial_method']['outbound']=='Predictive'){\n\t\t\t\t\t\tcall_mode
+    = 'inbound-blended'\n\t\t\t\t\t}\n\t\t\t\t\tvar domain_name = channel_data['variable_sip_from_host'];\n\t\t\t\t\treq.execute('set',
+    'hangup_after_bridge=false');\n\t\t\t\t\treq.execute('set', `call_mode=${call_mode}`);\n\t\t\t\t\tif
+    (data['non_office_hrs']==false){\n\t\t\t\t\t\tif (data['StickyAgent'] != true
+    ){\n\t\t\t\t\t\t\treq.execute('set', `cc_customer=${destination_number}`);\n\t\t\t\t\t\t\treq.execute('set',
+    'cc_export_vars=cc_customer');\n\t\t\t\t\t\t\treq.execute('callcenter', data['campaign']);\n\t\t\t\t\t\t\treq.execute('answer');\n\t\t\t\t\t\t}else{\n\t\t\t\t\t\t\tdata['dialed_uuid']=
+    dialed_uuid\n\t\t\t\t\t\t\tio.emit(\"inbound_StickyAgent\",data)\n\t\t\t\t\t\t}\n\t\t\t\t\t}else{\n\t\t\t\t\t\treq.execute('hangup');\n\t\t\t\t\t}\n\t\t\t\t}else{\n\t\t\t\t\treq.execute('set',
+    'call_mode=inbound');\n\t\t\t\t\tdata['destination_number']= destination_number\n\t\t\t\t\tdata['dialed_uuid']=
+    dialed_uuid\n\t\t\t\t\tif (data['non_office_hrs']==false){\n\n\t\t\t\t\t\tio.emit(\"inbound_agents\",data)\n\t\t\t\t\t}else{\n\t\t\t\t\t\treq.execute('hangup');\n\t\t\t\t\t}\n\t\t\t\t}\n\t\t\t}else
+    if(data['queue_call']==true & data['skill_routed_status']==true){\n\t\t\t\t\treq.execute('set',
+    'call_mode=inbound');\n\t\t\t\t\treq.execute('set', `cc_customer=${destination_number}`);\n\t\t\t\t\treq.execute('set',
+    'cc_export_vars=cc_customer');\n\t\t\t\t\tif (data['non_office_hrs']==false){\n\t\t\t\t\t\treq.execute(\"transfer\",`${caller_id}
+    XML default2`)\n\t\t\t\t\t}else{\n\t\t\t\t\t\treq.execute('hangup');\n\t\t\t\t\t}\n\t\t\t}\n\t\t})\n\t\treq.on('CUSTOM',
+    function (req) {\n\t\t\tif(req.body['Event-Subclass'] == 'CUSTOM::queued_busy_callback'){\n\t\t\t
+    \   if (req.body['variable_queued_busy_callback']){\n\t\t\t\t\tcallback = req.body['variable_queued_busy_callback']\n\t\t\t
+    \   }\n\t\t\t}\n\t\t\tif (req.body['CC-Action'] == 'member-queue-end' && req.body['CC-Cause']
+    == 'Cancel'){\n\t\t\t\tif ('CC-Cancel-Reason' in req.body){\n\t\t\t\t\tif (req.body['CC-Cancel-Reason']
+    == 'TIMEOUT'){\n\t\t\t\t\t\treq.execute('hangup');\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t}\n\t\t})\n\n\t
+    \treq.on('CHANNEL_ANSWER', function (req) {\n\t\t \t\tif (req.body['variable_ibc_popup']=='True'
+    && req.body['variable_queue_call']=='False'){\n\t\t\t \t\tanswered_agent = req.body['variable_cc_agent']\n\t\t\t
+    \t\tif (answered_agent){\n                       \tdialed_uuid = req.body['Unique-ID']\n
+    \                      \tdestination_number = req.body['Caller-Caller-ID-Number'].slice(-10)\n
+    \                      \tdate_time = '${strftime(%d-%m-%Y-%H-%M)}'\n                       \treq.execute('set','disposition=Connected')\n
+    \                      \treq.execute('set', 'cc_customer=${destination_number}');\n
+    \                      \treq.execute('set', 'cc_export_vars=cc_customer,cc_uname,disposition');\n
+    \                      \treq.execute(\"record_session\",`/var/spool/freeswitch/default/${date_time}_${destination_number}_${dialed_uuid}.mp3`)\n
+    \                      \tinbound.inboundcall_dis_alert(answered_agent,dialed_uuid,state='answer',function(err,data){\n
+    \                          \tdict_data = {'dialed_uuid':dialed_uuid,'extension':data}\n
+    \                          \tio.emit(\"inbound_notanswer_agents\",dict_data)\n
+    \                      \t})\n                   \t}\n\t\t \t\t}\n\t\t\treturn
+    util.log('INBOUND_CHANNEL_ANSWER');\n\t\t})\n\t\treq.on('CHANNEL_BRIDGE', function
+    (req) {\n\t\t\t    callback = \"\"\n\t\t\t\treq.execute('set','disposition=Connected')\n\t\t\t\tif
+    (req.body['variable_ibc_popup']=='False'  && req.body['variable_queue_call']=='True'){\n\t\t\t\t\tdestination_number
+    = req.body['Caller-Caller-ID-Number'].slice(-10)\n\t\t\t\t\tdialed_uuid = req.body['Unique-ID']\n\t\t\t\t\t//
+    date_time = '${strftime(%d-%m-%Y-%H-%M)}'\n\t\t\t\t\t// req.execute(\"record_session\",`/var/spool/freeswitch/default/${date_time}_${destination_number}_${dialed_uuid}.mp3`)\n\t\t\t\t\treq.execute('set','disposition=Connected')\n\t\t\t\t\treq.execute('set',
+    'cc_customer=${destination_number}');\n\t\t\t\t\treq.execute('set', 'cc_export_vars=cc_customer,cc_uname,disposition');\n\t\t\t\t\tio.emit(\"INBOUND_CHANNEL_BRIDGE\",{\"sip_extension\":req.body['Other-Leg-Orig-Caller-ID-Number'],\n\t\t\t\t\t\t\t\t\t\t\t\"customer_number\":destination_number,\"dialed_uuid\":dialed_uuid,\n\t\t\t\t\t\t\t\t\t\t\t\"call_timestamp\":req.body['Event-Date-Timestamp'],\"campaign\":req.body['variable_campaign']})\n\t\t\t\t}else
+    if(req.body['variable_ibc_popup']=='True' & 'variable_no_agent_audio' in req.body
+    & req.body['variable_no_agent_audio'] == 'true'){\n\t\t\t\t\tanswered_agent =
+    req.body['variable_cc_agent']\n\t\t\t \t\tif (answered_agent){\n\t                   \tdialed_uuid
+    = req.body['Unique-ID']\n\t                   \tdestination_number = req.body['Caller-Caller-ID-Number'].slice(-10)\n\t
+    \                  \tdate_time = '${strftime(%d-%m-%Y-%H-%M)}'\n\t                   \treq.execute('set','disposition=Connected')\n\t
+    \                  \treq.execute('set', 'cc_customer=${destination_number}');\n\t
+    \                  \treq.execute('set', 'cc_export_vars=cc_customer,cc_uname,disposition');\n\t
+    \                  \treq.execute(\"record_session\",`/var/spool/freeswitch/default/${date_time}_${destination_number}_${dialed_uuid}.mp3`)\n\t
+    \                  \tinbound.inboundcall_dis_alert(answered_agent,dialed_uuid,state='answer',function(err,data){\n\t
+    \                      \tdict_data = {'dialed_uuid':dialed_uuid,'extension':data}\n\t
+    \                      \tio.emit(\"inbound_notanswer_agents\",dict_data)\n\t                   \t})\n\t
+    \              \t}\n\t\t\t\t}\n\t\t\treturn util.log('INBOUND_CHANNEL_BRIDGE');\n\t\t
+    })\n\n\t\treq.on('CALL_UPDATE', function (req) {\n\t\t\t return util.log('INBOUND_CALL_UPDATE');\n\t\t\t\t})\n\n\t\tvar
+    dtmf = \"\"\n\t\treq.on('DTMF', function (req) {\n\t\t\tif(dtmf == \"\"){\n\t\t\t\tt=setTimeout(function(){\n\t\t\t\t\tdtmf
+    = \"\"\n\t\t\t\t}, 5000);\n\t\t\t}\n            dtmf = req.body['DTMF-Digit']\n
+    \           c_dtmf = dtmf.concat(dtmf);\n            if (c_dtmf == callback.concat('#')){\n\t\t\t
+    \   clearTimeout(t);\n\t\t\t    dtmf = \"\"\n\t\t\t    req.execute('set','disposition=CBR')\n\t\t\t
+    \   req.execute('hangup');\n            }\n\t\t\treturn util.log('INBOUND_DTMF');\n\t\t})\n\n\t\treq.on('CUSTOM',
+    function (req) {\n\t\t\tif (req.body['CC-Action'] == 'member-queue-end' && req.body['CC-Cause']
+    == 'Cancel'){\n\t\t\t\tif ('CC-Cancel-Reason' in req.body){\n\t\t\t\t\tif (req.body['CC-Cancel-Reason']
+    == 'TIMEOUT'){\n\t\t\t\t\t\treq.execute('hangup');\n\t\t\t\t\t}\n\t\t\t\t}\n\n\t\t\t}\n\t\t})\n\n\t\treq.on('CHANNEL_HANGUP',
+    function (req) {\n\t \t\tdialed_uuid = req.body['Unique-ID']\n\t \t\tif (req.body['variable_ibc_popup']=='True'
+    | req.body['variable_queue_call']=='False'){\n\t \t\t\tinbound.inboundcall_dis_alert(answered_agent='',dialed_uuid,state='hangup',function(err,data){\n\t
+    \t\t\t\tdict_data = {'dialed_uuid':dialed_uuid,'extension':data}\n\t \t\t\t\tio.emit(\"inbound_notanswer_agents\",dict_data)\n\t\t\t\t})\n\t
+    \t\t\tinbound.inboundcall_del_alert(dialed_uuid)\n\t \t\t}\n\t\t\t if( req.body['variable_transfer_status']=='true'){\n\t\t\t\t\t\t\t\tio.emit(\"OUTBOUND_CHANNEL_HANGUP\",{\"sip_extension\":req.body['Other-Leg-Orig-Caller-ID-Number']})\n\t\t\t\t\t\t\t\treturn
+    util.log('INBOUND_TRANSFERED_CHANNEL_HANGUP',req.body['Other-Leg-Orig-Caller-ID-Number']);\n\t\t\t
+    }else{\n\t \t\t// console.log({\"sip_extension\":req.body['variable_cc_agent'],\"ibc_popup\":req.body['variable_ibc_popup'],\"queue_call\":req.body['variable_queue_call']})\n\t\t\t\t\t\tio.emit(\"INBOUND_CHANNEL_HANGUP\",{\"sip_extension\":req.body['variable_cc_agent'],\"ibc_popup\":req.body['variable_ibc_popup'],\"queue_call\":req.body['variable_queue_call']})\n\t\t\t}\n\t\t\treturn
+    util.log('INBOUND_CHANNEL_HANGUP');\n\t\t})\n\n\t\treq.on('CHANNEL_HANGUP_COMPLETE',
+    function (req) {\n\t\t\t return util.log('INBOUND_CHANNEL_HANGUP_COMPLETE');\n\t\t})\n\t});\ninbound_server.listen(8087,
+    '0.0.0.0');\n\nautodial_server = esl.createCallServer();\nautodial_server.on('CONNECT',
+    function (req) {\n\t\t\t\tvar channel_data = req.body;\n\t            var callback
+    = channel_data['variable_queued_busy_callback']\n\t\t\t\tvar unique_id = channel_data['Unique-ID'];\n\t\t\t\tvar
+    cc_customer = channel_data['Caller-Caller-ID-Number'];\n\t\t\t\tvar campaign =
+    channel_data['variable_campaign'];\n\t\t\t\tvar contact_id = channel_data['variable_contact_id'];\n\t\t\t\tvar
+    phonebook = req.body['variable_phonebook']\n\t\t\t\treq.execute('set', 'hangup_after_bridge=false');\n\t\t\t\treq.execute('set',
+    'cc_export_vars=cc_customer,cc_uname,campaign,disposition,contact_id,phonebook');\n\t\t\t\treq.execute('callcenter',
+    campaign);\n\t\t\t\treq.execute('answer');\n\t\t\t\treq.execute('hangup');\n\t\t\t\treq.on('CHANNEL_BRIDGE',
+    function (req) {\n\t\t\t\t\tcallback = \"\"\n\t\t\t\t\tvar bridge_agent = req.body['Other-Leg-Orig-Caller-ID-Number']\n\t\t\t\t\tvar
+    dialed_uuid = req.body['Unique-ID']\n\t\t\t\t\treq.execute('set','disposition=Connected')\n\t\t\t\t\tio.emit(\"AUTODIAL_CHANNEL_BRIDGE\",{\"sip_extension\":req.body['Other-Leg-Orig-Caller-ID-Number'],\n\t\t\t\t\t\t\t\t\t\t\t\"customer_number\":req.body['variable_cc_customer'],\"dialed_uuid\":req.body['Unique-ID'],\n\t\t\t\t\t\t\t\t\t\t\t\"call_timestamp\":req.body['Event-Date-Timestamp'],\"contact_id\":contact_id})\n\t\t\t\t\t\t\tconsole.log('Bridging');\n\t\t\t\t});\n\t\t\t\treq.on('CALL_UPDATE',
+    function (req) {\n\t\t\t\t\t\tconsole.log('call updated');\n\t\t\t\t});\n\n\t\t\t\t//
+    req.on('DTMF', function (req) {\n\t\t\t\t// \tconsole.log(req.body)\n\t\t\t\t//
+    \treturn util.log('Autodial_DTMF');\n\t\t\t\t// })\n\n\t\t\t\treq.on('CHANNEL_ANSWER',
+    function (req) {\n\t\t\t\t\t\treturn util.log('Call was answered');\n\t\t\t\t});\n\n\t\t\t\treq.on('CUSTOM',
+    function (req) {\n\t\t\t\t\tif (req.body['CC-Action'] == 'member-queue-end' &&
+    req.body['CC-Cause'] == 'Cancel'){\n\t\t\t\t\t\tif ('CC-Cancel-Reason' in req.body){\n\t\t\t\t\t\t\tif
+    (req.body['CC-Cancel-Reason'] == 'TIMEOUT'){\n\t\t\t\t\t\t\t\treq.execute('hangup');\n\t\t\t\t\t\t\t}\n\t\t\t\t\t\t}\n\n\t\t\t\t\t}\n\t\t\t\t})\n\n\t\t\t\treq.on('CHANNEL_HANGUP',
+    function (req) {\n\t\t\t\t\t\tif( req.body['variable_transfer_status']=='true'){\n\t\t\t\t\t\t\tio.emit(\"OUTBOUND_CHANNEL_HANGUP\",{\"sip_extension\":req.body['Other-Leg-Orig-Caller-ID-Number']})\n\t\t\t\t\t\t\treturn
+    util.log('AUTODIAL_TRANSFERED_CHANNEL_HANGUP',req.body['Other-Leg-Orig-Caller-ID-Number']);\n\t\t\t\t\t\t}else{\n\t\t\t\t\t\tio.emit(\"AUTODIAL_CHANNEL_HANGUP\",{\"sip_extension\":req.body['variable_cc_agent']})\n\t\t\t\t\t\treturn
+    util.log('CHANNEL_HANGUP');\n\t\t\t\t\t\t}\n\t\t\t\t});\n\n\t\t\t\treq.on('CHANNEL_CALLSTATE',
+    function (req) {\n\t\t\t\t\t\treturn util.log('CHANNEL_CALLSTATE');\n\t\t\t\t});\n\t\t\t\treq.on('CHANNEL_HANGUP_COMPLETE',
+    function (req) {\n\t\t\t\t\t\treturn util.log('CHANNEL_HANGUP_COMPLETE');\n\t\t\t\t});\n\t\t\t\treq.on('DISCONNECT',
+    function (req) {\n\t\t\t\t\t\treturn util.log('DISCONNECT');\n\t\t\t\t});\n\t\t\t\treq.on('uncaughtException',
+    function (req) {\n\t\t\t\t\t\treturn util.log('Epipe Error');\n\t\t\t\t});\n\t\t\t\treq.on('error',
+    function (req) {\n\t\t\t\t\t\treturn util.log('Epipe Error');\n\t\t\t\t});\n\t\t});\nautodial_server.listen(8086,
+    '0.0.0.0');\n\n\n}).call(this);\n\n// Emergency logout event from admin\n\n"
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2022-05-02T12:06:06Z"
+  name: websocket-config
+  namespace: buzzworks
+  resourceVersion: "17809078"
+  uid: cedb7861-3822-4a25-84ac-85b8776e3240

@@ -1,0 +1,57 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: manager
+spec:
+  selector:
+    matchLabels:
+      app: manager
+      tier: backend
+      track: stable
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: manager
+        tier: backend
+        track: stable
+    spec:
+      serviceAccountName: workload-identity      
+      containers:
+      - name: app-manager
+        image: gcr.io/hsl-gcp-prd-app-buzzwk-prj-spk/flexydial-app@sha256:b7220fa2bf1161214a92db044ed446c44700d38dc865c8b3d9414d8dc4a6a7b1
+        imagePullPolicy: Always
+        command: ["python"]
+        args: ["manage.py", "manager"]
+        # volumeMounts:
+        # - mountPath: "/var/lib/flexydial/media"
+        #   name: phonebook-disk
+           #           readOnly: true
+        env:
+        - name: FLEXYDIAL_DB_HOST
+          value: 10.34.70.2
+        - name: FLEXYDIAL_DB_PASS
+          value: dxt5qF1bqN2ynMAg
+        - name: CRM_DB_HOST
+          value: 10.34.70.2
+        - name: CRM_DB_PASS
+          value: dxt5qF1bqN2ynMAg
+        - name: REDIS_HOST
+          value: 10.34.71.6
+        - name: REDIS_PORT
+          value: "6379"
+        - name: FREESWITCH_HOST
+          value: telephony
+        - name: DEBUG
+          value: "False"
+        - name: GS_BUCKET_NAME
+          value: flexydial-storage
+          # volumes:
+          # - name: phonebook-disk
+          # persistentVolumeClaim:
+          # claimName: gke-phonebook-disk
+      nodeSelector:
+              #kubernetes.io/hostname: gke-hsl-gcp-prd-app-buzz-default-pool-c4063a2a-nxdj
+              # purpose: app
+        iam.gke.io/gke-metadata-server-enabled: "true"
