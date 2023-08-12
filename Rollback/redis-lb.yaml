@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: redis-proxy
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+    #    networking.gke.io/load-balancer-healthcheck-plan: "/static/index.html"
+  labels:
+    app: redis-rev-proxy
+spec:
+  type: LoadBalancer
+  selector:
+    app: nginx-redis-rev-proxy
+  loadBalancerIP: 10.34.48.12
+  ports:
+  - port: 6379
+    targetPort: 6379
+    protocol: TCP
+    name: redis
+  - port: 8079
+    targetPort: 6379
+    protocol: TCP
+    name: redis1

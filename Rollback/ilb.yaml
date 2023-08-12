@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres-proxy
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+    #    networking.gke.io/load-balancer-healthcheck-plan: "/static/index.html"
+  labels:
+    app: postgres-rev-proxy
+spec:
+  type: LoadBalancer
+  selector:
+    app: nginx-postgre-rev-proxy
+  loadBalancerIP: 10.34.48.11
+  ports:
+  - port: 5432 
+    targetPort: 5432
+    protocol: TCP
+    name: psql
+    #  - port: 443
+    #targetPort: 443
+    #protocol: TCP
+    #name: https

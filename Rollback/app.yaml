@@ -1,0 +1,163 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: app
+spec:
+  selector:
+    matchLabels:
+      app: app
+      tier: backend
+      track: stable
+      #replicas: 8
+  template:
+    metadata:
+      labels:
+        app: app
+        tier: backend
+        track: stable
+    spec:
+      serviceAccountName: workload-identity
+      hostAliases:
+       - ip: "10.176.34.203"
+         hostnames:
+           - "noidadc.hdfcsec.com"
+       - ip: "10.176.75.40"
+         hostnames:
+           - "vashidc.hdfcsec.com"
+       - ip: "10.176.73.92"
+         hostnames:
+           - "nashikdc.hdfcsec.com"
+       - ip: "10.176.52.30"
+         hostnames:
+           - "cochindc.hdfcsec.com"   
+       - ip: "10.176.20.251"
+         hostnames:
+           - "andheridc1.hdfcsec.com"
+       - ip: "10.176.20.252"
+         hostnames:
+           - "andheridc2.hdfcsec.com"
+       - ip: "10.176.37.190"
+         hostnames:
+           - "borivalidc.hdfcsec.com"
+       - ip: "10.176.231.205"
+         hostnames:
+           - "indoredc.hdfcsec.com"
+       - ip: "10.176.86.105"
+         hostnames:
+           - "ahmedabaddc.hdfcsec.com"
+       - ip: "10.176.84.60"
+         hostnames:
+           - "jaipurdc.hdfcsec.com"     
+       - ip: "10.176.87.100"
+         hostnames:
+           - "kol1dc.hdfcsec.com"
+       - ip: "10.176.33.254"
+         hostnames:
+           - "bangaloredc.hdfcsec.com"
+       - ip: "10.176.48.150"
+         hostnames:
+           - "jaipurbr.hdfcsec.com"
+       - ip: "10.176.237.125"
+         hostnames:
+           - "punebr.hdfcsec.com"
+       - ip: "10.176.44.250"
+         hostnames:
+           - "barodabr.hdfcsec.com"
+       - ip: "10.176.132.250"
+         hostnames:
+           - "secunderabadbr.hdfcsec.com"
+       - ip: "10.176.155.250"
+         hostnames:
+           - "thrissurbr.hdfcsec.com"
+      nodeSelector:
+              #kubernetes.io/hostname: gke-hsl-gcp-prd-app-buzz-default-pool-c4063a2a-nxdj 
+              #purpose: app
+         iam.gke.io/gke-metadata-server-enabled: "true"
+      containers:
+      - name: app-django-backend
+        image: gcr.io/hsl-gcp-prd-app-buzzwk-prj-spk/flexydial-app:roll
+        imagePullPolicy: Always
+        command: ["uwsgi"]
+        args: [ "--ini","uwsgi-tcp.ini","--disable-logging","--stats", "/tmp/stats.socket"]
+        resources:
+          requests:
+            cpu: "500m"
+            #memory: "1024Mi"
+          limits:
+            cpu: "700m"
+            #memory: "2048Mi"
+        ports:
+        - name: http
+          containerPort: 8001
+        volumeMounts:
+                # - mountPath: "/var/lib/flexydial/media"
+                #name: phonebook-disk
+        - name: app-config
+          mountPath: /home/app/flexydial/settings.py
+          subPath: settings.py
+          readOnly: true
+        env:
+        - name: FLEXYDIAL_DB_HOST
+          value: 10.34.70.2
+        - name: FLEXYDIAL_DB_PASS
+          value: dxt5qF1bqN2ynMAg
+        - name: CRM_DB_HOST
+          value: 10.34.70.2
+        - name: CRM_DB_PASS
+          value: dxt5qF1bqN2ynMAg
+        - name: REDIS_HOST
+          value: 10.34.71.6
+        - name: REDIS_PORT
+          value: "6379"
+        - name: API_CAMPAIGN_FIELD
+          value: "pl:source"
+        - name: API_NUMERIC_FIELD
+          value: "pl:phonenumber"
+        - name: REPLACE_API_KEY
+          value: "_"
+        - name: REPLACE_API_VALUE
+          value: ":"
+        - name: XML_INSERT_KEY
+          value: "PostLead"
+        - name: XML_UPDATE_KEY
+          value: "PostLead2"
+        - name: API_DEST_CAMP
+          value: "DAO_TEAM"
+        - name: FREESWITCH_HOST
+          value: telephony
+        - name: DEBUG
+          value: "False"
+        - name: GS_BUCKET_NAME
+          value: flexydial-storage
+        - name: REDIS_KEY_EXPIRE_IN_SEC
+          value: "32400" 
+        - name: WEB_URL
+          value: "https://connect.hdfcsec.com" 
+        - name: RABBITMQ_HOST
+          value: rabbitmq 
+      volumes:
+      - name: app-config
+        configMap:
+           name: app-config
+           items:
+           - key: settings.py
+             path: settings.py
+     # - name: phonebook-disk
+         #   persistentVolumeClaim:
+         # claimName: gke-phonebook-disk
+---
+ apiVersion: v1
+ kind: Service
+ metadata:
+   name: app
+ spec:
+   selector:
+     app: app
+     tier: backend
+     track: stable
+   type: NodePort
+   ports:
+   - protocol: TCP
+     port: 8001
+     targetPort: 8001

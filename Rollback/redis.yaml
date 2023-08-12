@@ -1,0 +1,18 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: redis-cli
+spec:
+  selector:
+    matchLabels:
+      app: redis-cli
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app: redis-cli
+    spec:
+      containers:
+      - name: redis
+        image: marketplace.gcr.io/google/redis6:latest
+        imagePullPolicy: IfNotPresent

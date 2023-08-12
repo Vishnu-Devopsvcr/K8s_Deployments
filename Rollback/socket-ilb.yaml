@@ -1,0 +1,43 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: socket-proxy
+  annotations:
+    networking.gke.io/load-balancer-type: "Internal"
+    #    networking.gke.io/load-balancer-healthcheck-plan: "/static/index.html"
+  labels:
+        app: socket-ilb
+        tier: backend
+        track: stable
+spec:
+  type: LoadBalancer
+  selector:
+    app: socket
+    tier: backend
+    track: stable
+  loadBalancerIP: 10.34.48.13
+  ports:
+  - port: 8084 
+    targetPort: 8084
+    protocol: TCP
+    name: login
+  - port: 8085
+    targetPort: 8085
+    protocol: TCP
+    name: out
+  - port: 8086
+    targetPort: 8086
+    protocol: TCP
+    name: pred
+  - port: 8087
+    targetPort: 8087
+    protocol: TCP
+    name: inb
+    #  - port: 443
+    #targetPort: 443
+    #protocol: TCP
+    #name: https
+  sessionAffinity: ClientIP
+  sessionAffinityConfig:
+    clientIP:
+      timeoutSeconds: 43200
